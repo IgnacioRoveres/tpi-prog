@@ -3,7 +3,7 @@ package main;
 import service.HistoriaClinicaService;
 import entities.Paciente;
 import entities.GrupoSanguineo;
-
+import entities.HistoriaClinica;
 import java.util.List;
 import java.util.Scanner;
 import java.time.LocalDate;
@@ -54,40 +54,58 @@ public class AppMenu {
 
 
     // CREAR PACIENTE (Historia clínica automática)
-    private void crearPaciente() {
-        try {
-            System.out.println("\n=== Nuevo Paciente ===");
+private void crearPaciente() {
+    try {
+        System.out.println("\n=== Nuevo Paciente ===");
 
-            System.out.print("Nombre: ");
-            String nombre = scanner.nextLine();
+        System.out.print("Nombre: ");
+        String nombre = scanner.nextLine();
 
-            System.out.print("Apellido: ");
-            String apellido = scanner.nextLine();
+        System.out.print("Apellido: ");
+        String apellido = scanner.nextLine();
 
-            System.out.print("DNI: ");
-            int dni = Integer.parseInt(scanner.nextLine());
+        System.out.print("DNI: ");
+        int dni = Integer.parseInt(scanner.nextLine());
 
-            System.out.print("Fecha de nacimiento (AAAA-MM-DD): ");
-            LocalDate fecha = LocalDate.parse(scanner.nextLine().trim());
+        System.out.print("Fecha de nacimiento (AAAA-MM-DD): ");
+        LocalDate fecha = LocalDate.parse(scanner.nextLine().trim());
 
-            // CREAR OBJETO PACIENTE (la HC se asigna automáticamente después)
-            Paciente p = new Paciente(
-                    0,
-                    nombre,
-                    apellido,
-                    dni,
-                    fecha,
-                    null
-            );
+        System.out.print("Grupo sanguíneo (A+, A-, B+, O+, etc.): ");
+        String grupoStr = scanner.nextLine().trim().toUpperCase();
 
-            pacienteService.crearPacienteAsignandoHistoria(p);
+        System.out.print("Antecedentes: ");
+        String antecedentes = scanner.nextLine();
 
-            System.out.println("✅ Paciente creado correctamente.");
+        System.out.print("Medicación actual: ");
+        String medicacion = scanner.nextLine();
 
-        } catch (Exception e) {
-            System.out.println("❌ Error al crear paciente: " + e.getMessage());
-        }
+        System.out.print("Observaciones: ");
+        String observaciones = scanner.nextLine();
+
+        // Crear paciente (HC se asigna después)
+        Paciente p = new Paciente(
+                0L,
+                nombre,
+                apellido,
+                dni,
+                fecha,
+                null
+        );
+
+        pacienteService.crearPacienteAsignandoHistoria(
+                p,
+                antecedentes,
+                medicacion,
+                grupoStr,
+                observaciones
+        );
+
+        System.out.println("✅ Paciente creado correctamente.");
+
+    } catch (Exception e) {
+        System.out.println("❌ Error al crear paciente: " + e.getMessage());
     }
+}
 
     // LISTAR PACIENTES
     private void listarPacientes() {
@@ -122,36 +140,79 @@ public class AppMenu {
     }
 
 
-    // ACTUALIZAR PACIENTE
-    private void actualizarPaciente() {
-        try {
-            System.out.print("Ingrese ID del paciente a actualizar: ");
-            Long id = Long.parseLong(scanner.nextLine());
-            Paciente existente = pacienteService.obtenerPorId(id);
 
-            if (existente == null) {
-                System.out.println("⚠️ No existe paciente con ese ID.");
-                return;
-            }
+    // ACTUALIZAR PACIENTE (todos los campos)
+private void actualizarPaciente() {
+    try {
+        System.out.print("Ingrese ID del paciente a actualizar: ");
+        Long id = Long.parseLong(scanner.nextLine());
+        Paciente existente = pacienteService.obtenerPorId(id);
 
-            System.out.println("Paciente actual: " + existente);
-
-            System.out.print("Nuevo nombre (Enter para mantener): ");
-            String nombre = scanner.nextLine();
-            if (!nombre.isBlank()) existente.setNombre(nombre);
-
-            System.out.print("Nuevo apellido (Enter para mantener): ");
-            String apellido = scanner.nextLine();
-            if (!apellido.isBlank()) existente.setApellido(apellido);
-
-            pacienteService.actualizar(existente);
-            System.out.println("✅ Paciente actualizado.");
-
-        } catch (Exception e) {
-            System.out.println("❌ Error al actualizar: " + e.getMessage());
+        if (existente == null) {
+            System.out.println("⚠️ No existe paciente con ese ID.");
+            return;
         }
-    }
 
+        System.out.println("\n=== Datos actuales del paciente ===");
+        System.out.println(existente);
+
+        // =============================
+        // DATOS PERSONALES
+        // =============================
+        System.out.print("Nuevo nombre (Enter para mantener: " + existente.getNombre() + "): ");
+        String nombre = scanner.nextLine();
+        if (!nombre.isBlank()) existente.setNombre(nombre);
+
+        System.out.print("Nuevo apellido (Enter para mantener: " + existente.getApellido() + "): ");
+        String apellido = scanner.nextLine();
+        if (!apellido.isBlank()) existente.setApellido(apellido);
+
+        System.out.print("Nuevo DNI (Enter para mantener: " + existente.getDni() + "): ");
+        String dniInput = scanner.nextLine();
+        if (!dniInput.isBlank()) existente.setDni(Integer.parseInt(dniInput));
+
+        System.out.print("Nueva fecha nacimiento (AAAA-MM-DD) (Enter para mantener: " 
+                + existente.getFechaNacimiento() + "): ");
+        String fechaInput = scanner.nextLine();
+        if (!fechaInput.isBlank()) existente.setFechaNacimiento(LocalDate.parse(fechaInput.trim()));
+
+        // =============================
+        // HISTORIA CLÍNICA
+        // =============================
+        HistoriaClinica hc = existente.getHistoriaClinica();
+
+        System.out.println("\n=== Historia Clínica Actual ===");
+        System.out.println("Nro HC: " + hc.getNroHistoria());
+        System.out.println("Grupo sanguíneo: " + hc.getGrupoSanguineo());
+        System.out.println("Antecedentes: " + hc.getAntecedentes());
+        System.out.println("Medicación: " + hc.getMedicacionActual());
+
+        System.out.print("Nuevo grupo sanguíneo (Enter para mantener): ");
+        String grupoInput = scanner.nextLine();
+        if (!grupoInput.isBlank()) {
+            hc.setGrupoSanguineo(GrupoSanguineo.fromValor(grupoInput.toUpperCase()));
+        }
+
+        System.out.print("Nuevos antecedentes (Enter para mantener): ");
+        String antInput = scanner.nextLine();
+        if (!antInput.isBlank()) hc.setAntecedentes(antInput);
+
+        System.out.print("Nueva medicación (Enter para mantener): ");
+        String medInput = scanner.nextLine();
+        if (!medInput.isBlank()) hc.setMedicacionActual(medInput);
+
+        // =============================
+        // ACTUALIZAR EN BD
+        // =============================
+        pacienteService.actualizar(existente);          // actualiza datos personales
+        pacienteService.actualizarHistoria(hc);         // actualiza historia clínica
+
+        System.out.println("✅ Paciente actualizado correctamente.");
+
+    } catch (Exception e) {
+        System.out.println("❌ Error al actualizar: " + e.getMessage());
+    }
+}
 
     // ELIMINAR PACIENTE
     private void eliminarPaciente() {

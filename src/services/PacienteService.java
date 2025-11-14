@@ -9,7 +9,8 @@ import entities.GrupoSanguineo;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.ArrayList;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.List;
 
 public class PacienteService {
@@ -22,48 +23,67 @@ public class PacienteService {
         this.pacienteDAO = new PacienteDAO(historiaDAO);
     }
 
-    // CREAR PACIENTE AUTOMÁTICAMENTE ASIGNANDO HISTORIA CLÍNICA
-    public void crearPacienteAsignandoHistoria(Paciente p) throws Exception {
+    // =====================================================
+    // CREAR PACIENTE + ASIGNAR HC AUTOMÁTICA COMPLETA
+    // =====================================================
+    public void crearPacienteAsignandoHistoria(Paciente p,
+                                               String antecedentes,
+                                               String medicacion,
+                                               String grupoSanguineoStr,
+                                               String observaciones) throws Exception {
+
         try (Connection conn = DatabaseConnection.getConnection()) {
 
             try {
                 conn.setAutoCommit(false);
 
-                // 1) Obtener la primera historia clínica disponible
+                // 1) Buscar HC libre o crear una nueva
                 HistoriaClinica h = obtenerHistoriaClinicaAutomatica(conn);
 
-                if (h == null) {
-                    throw new Exception("No hay historias clínicas disponibles para asignar.");
-                }
+                // 2) Actualizar con datos ingresados por usuario
+                h.setGrupoSanguineo(GrupoSanguineo.fromValor(grupoSanguineoStr));
+                h.setAntecedentes(antecedentes);
+                h.setMedicacionActual(medicacion);
+                h.setObservaciones(observaciones);
 
-                // 2) Asignar historia clínica al paciente
+                historiaDAO.actualizar(h, conn);
+
+                // 3) Asociar HC al paciente
                 p.setHistoriaClinica(h);
 
-                // 3) Insertar paciente (sin crear historia clínica)
+                // 4) Insertar paciente
                 pacienteDAO.insertar(p, conn);
 
                 conn.commit();
+
             } catch (SQLException ex) {
                 conn.rollback();
                 throw ex;
+
             } finally {
                 conn.setAutoCommit(true);
             }
         }
     }
 
-    // OBTENER LA PRIMERA HISTORIA CLÍNICA DISPONIBLE (AUTO)=
+    // =====================================================
+    // OBTENER HC LIBRE O CREAR NUEVA
+    // =====================================================
     private HistoriaClinica obtenerHistoriaClinicaAutomatica(Connection conn) throws SQLException {
 
-        String sql = "SELECT * FROM historiaclinica ORDER BY id LIMIT 1";
+        String sql =
+            "SELECT h.* FROM historiaclinica h " +
+            "LEFT JOIN paciente p ON h.id = p.historiaClinica " +
+            "WHERE p.idPaciente IS NULL " +
+            "ORDER BY h.id LIMIT 1";
 
-        try (var stmt = conn.prepareStatement(sql);
-             var rs = stmt.executeQuery()) {
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
 
             if (rs.next()) {
                 return new HistoriaClinica(
-                        rs.getInt("id"),
-                        rs.getInt("nroHistoria"),
+                        rs.getLong("id"),
+                        rs.getLong("nroHistoria"),
                         GrupoSanguineo.fromValor(rs.getString("grupoSanguineo")),
                         rs.getString("antecedentes"),
                         rs.getString("medicacionActual"),
@@ -71,10 +91,44 @@ public class PacienteService {
                 );
             }
         }
-        return null;
+
+        // Si no hay HC disponible → crear nueva
+        return crearNuevaHistoriaClinica(conn);
     }
 
-    // CRUD BÁSICO
+    // =====================================================
+    // CREAR NUEVA HISTORIA CLÍNICA
+    // =====================================================
+    private HistoriaClinica crearNuevaHistoriaClinica(Connection conn) throws SQLException {
+
+        HistoriaClinica nueva = new HistoriaClinica(
+                0L,
+                0L,
+                GrupoSanguineo.fromValor("O+"),
+                "",
+                "",
+                "Historia generada automáticamente"
+        );
+
+        historiaDAO.insertar(nueva, conn);
+
+        // Recargar nroHistoria generado
+        String sql = "SELECT nroHistoria FROM historiaclinica WHERE id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, nueva.getId());
+            ResultSet rs = stmt.executeQuery();
+
+            if (rs.next()) {
+                nueva.setNroHistoria(rs.getLong("nroHistoria"));
+            }
+        }
+
+        return nueva;
+    }
+
+    // =====================================================
+    // CRUD COMPLETO
+    // =====================================================
 
     public List<Paciente> obtenerTodos() throws Exception {
         try (Connection conn = DatabaseConnection.getConnection()) {
@@ -83,15 +137,15 @@ public class PacienteService {
     }
 
     public Paciente buscarPorDni(String dniStr) throws Exception {
-        int dni = Integer.parseInt(dniStr);
+        long dni = Long.parseLong(dniStr);
         try (Connection conn = DatabaseConnection.getConnection()) {
-            return pacienteDAO.buscarPorCampoUnicoInt(dni, conn);
+            return pacienteDAO.buscarPorCampoUnicoLong(dni, conn);
         }
     }
 
     public Paciente obtenerPorId(Long id) throws Exception {
         try (Connection conn = DatabaseConnection.getConnection()) {
-            return pacienteDAO.getById(id.intValue(), conn);
+            return pacienteDAO.getById(id, conn);
         }
     }
 
@@ -103,57 +157,16 @@ public class PacienteService {
 
     public void eliminarPaciente(Long id) throws Exception {
         try (Connection conn = DatabaseConnection.getConnection()) {
-            pacienteDAO.eliminar(id.intValue(), conn);
+            pacienteDAO.eliminar(id, conn);
         }
     }
 
-    // MÉTODOS OPCIONALES (YA NO SE USAN EN ESTE FLUJO)
-   
-    public List<HistoriaClinica> obtenerPrimerasHistorias(int cantidad) throws SQLException {
-        List<HistoriaClinica> lista = new ArrayList<>();
-
-        String sql = "SELECT * FROM historiaclinica ORDER BY id LIMIT ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             var stmt = conn.prepareStatement(sql)) {
-
-            stmt.setInt(1, cantidad);
-            var rs = stmt.executeQuery();
-
-            while (rs.next()) {
-                HistoriaClinica hc = new HistoriaClinica(
-                        rs.getInt("id"),
-                        rs.getInt("nroHistoria"),
-                        GrupoSanguineo.fromValor(rs.getString("grupoSanguineo")),
-                        rs.getString("antecedentes"),
-                        rs.getString("medicacionActual"),
-                        rs.getString("observaciones")
-                );
-                lista.add(hc);
-            }
+    // =====================================================
+    // ACTUALIZAR HC DIRECTAMENTE
+    // =====================================================
+    public void actualizarHistoria(HistoriaClinica h) throws Exception {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            historiaDAO.actualizar(h, conn);
         }
-
-        return lista;
-    }
-
-    public HistoriaClinica obtenerHistoriaPorId(int idHistoria) throws SQLException {
-        String sql = "SELECT * FROM historiaclinica WHERE id = ?";
-        try (Connection conn = DatabaseConnection.getConnection();
-             var stmt = conn.prepareStatement(sql)) {
-
-            stmt.setInt(1, idHistoria);
-            var rs = stmt.executeQuery();
-
-            if (rs.next()) {
-                return new HistoriaClinica(
-                        rs.getInt("id"),
-                        rs.getInt("nroHistoria"),
-                        GrupoSanguineo.fromValor(rs.getString("grupoSanguineo")),
-                        rs.getString("antecedentes"),
-                        rs.getString("medicacionActual"),
-                        rs.getString("observaciones")
-                );
-            }
-        }
-        return null;
     }
 }

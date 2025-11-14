@@ -22,7 +22,7 @@ public class HistoriaClinicaService {
         }
     }
 
-    public HistoriaClinica obtenerPorId(int id) throws Exception {
+    public HistoriaClinica obtenerPorId(long id) throws Exception {
         try (Connection conn = DatabaseConnection.getConnection()) {
             return historiaDAO.getById(id, conn);
         }
@@ -34,9 +34,9 @@ public class HistoriaClinicaService {
         }
     }
 
-    public HistoriaClinica buscarPorNroHistoria(int nro) throws Exception {
+    public HistoriaClinica buscarPorNroHistoria(long nro) throws Exception {
         try (Connection conn = DatabaseConnection.getConnection()) {
-            return historiaDAO.buscarPorCampoUnicoInt(nro, conn);
+            return historiaDAO.buscarPorCampoUnicoLong(nro, conn);
         }
     }
 }
